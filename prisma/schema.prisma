@@ -1,0 +1,344 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  DISPATCHER
+}
+
+enum ServiceType {
+  WATER
+  ELECTRICITY
+  BOTH
+}
+
+enum OutageStatus {
+  PENDING
+  VERIFIED
+  ACTIVE
+  INVESTIGATING
+  RESTORED
+  REJECTED
+}
+
+enum ReportStatus {
+  PENDING
+  VERIFIED
+  MERGED
+  REJECTED
+}
+
+enum SeverityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AnnouncementPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  OUTAGE_NEARBY
+  OUTAGE_VERIFIED
+  STATUS_CHANGED
+  SERVICE_RESTORED
+  ANNOUNCEMENT
+  SYSTEM
+}
+
+model User {
+  id              String         @id @default(uuid())
+  name            String
+  email           String         @unique
+  password        String
+  phone           String?
+  role            Role           @default(USER)
+  isActive        Boolean        @default(true)
+  avatar          String?
+  bio             String?
+  resetToken      String?
+  resetExpires    DateTime?
+
+  // Primary Location
+  subCityId       String?
+  subCity         SubCity?       @relation(fields: [subCityId], references: [id], onDelete: SetNull)
+  woredaId        String?
+  woreda          Woreda?        @relation(fields: [woredaId], references: [id], onDelete: SetNull)
+  areaId          String?
+  area            Area?          @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  address         String?
+
+  // Relations
+  reports         OutageReport[]
+  createdOutages  Outage[]       @relation("OutageCreator")
+  verifiedOutages Outage[]       @relation("OutageVerifier")
+  updates         OutageUpdate[]
+  notifications   Notification[]
+  announcements   Announcement[]
+  savedLocations  UserLocation[]
+  confirmations   AffectedConfirmation[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@index([subCityId])
+}
+
+model SubCity {
+  id          String         @id @default(uuid())
+  name        String         @unique
+  amharicName String?
+  code        String?        @unique
+  latitude    Float
+  longitude   Float
+  description String?
+
+  woredas       Woreda[]
+  users         User[]
+  outages       Outage[]
+  reports       OutageReport[]
+  announcements Announcement[]
+  savedLocations UserLocation[]
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([name])
+}
+
+model Woreda {
+  id          String         @id @default(uuid())
+  name        String
+  subCityId   String
+  subCity     SubCity        @relation(fields: [subCityId], references: [id], onDelete: Cascade)
+  code        String?
+  latitude    Float?
+  longitude   Float?
+
+  areas         Area[]
+  users         User[]
+  outages       Outage[]
+  reports       OutageReport[]
+  savedLocations UserLocation[]
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([subCityId, name])
+  @@index([subCityId])
+}
+
+model Area {
+  id          String         @id @default(uuid())
+  name        String
+  woredaId    String
+  woreda      Woreda         @relation(fields: [woredaId], references: [id], onDelete: Cascade)
+  latitude    Float?
+  longitude   Float?
+  landmark    String?
+
+  users         User[]
+  outages       Outage[]
+  reports       OutageReport[]
+  savedLocations UserLocation[]
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([woredaId, name])
+  @@index([woredaId])
+}
+
+model UserLocation {
+  id          String         @id @default(uuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label       String         // e.g. "Home", "Office", "Parents"
+  subCityId   String
+  subCity     SubCity        @relation(fields: [subCityId], references: [id], onDelete: Cascade)
+  woredaId    String?
+  woreda      Woreda?        @relation(fields: [woredaId], references: [id], onDelete: SetNull)
+  areaId      String?
+  area        Area?          @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  address     String?
+  isPrimary   Boolean        @default(false)
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId])
+}
+
+model Outage {
+  id                   String         @id @default(uuid())
+  title                String
+  serviceType          ServiceType
+  problemType          String         // e.g., "Pipe Burst", "Main Line Leak", "Transformer Failure", "Power Grid Blackout"
+  status               OutageStatus   @default(PENDING)
+  severity             SeverityLevel  @default(MEDIUM)
+  description          String
+
+  subCityId            String
+  subCity              SubCity        @relation(fields: [subCityId], references: [id], onDelete: Restrict)
+  woredaId             String?
+  woreda               Woreda?        @relation(fields: [woredaId], references: [id], onDelete: SetNull)
+  areaId               String?
+  area                 Area?          @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  specificLocation     String?        // street, landmark, neighbourhood
+  latitude             Float
+  longitude            Float
+
+  startedAt            DateTime       @default(now())
+  estimatedRestoration DateTime?
+  restoredAt           DateTime?
+
+  verifiedAt           DateTime?
+  verifiedById         String?
+  verifiedBy           User?          @relation("OutageVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  createdById          String?
+  createdBy            User?          @relation("OutageCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  reports              OutageReport[]
+  updates              OutageUpdate[]
+  confirmations        AffectedConfirmation[]
+
+  affectedReportsCount Int            @default(1)
+  restoredVotesCount   Int            @default(0)
+
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([status])
+  @@index([serviceType])
+  @@index([subCityId])
+  @@index([startedAt])
+  @@index([latitude, longitude])
+}
+
+model OutageReport {
+  id               String         @id @default(uuid())
+  outageId         String?
+  outage           Outage?        @relation(fields: [outageId], references: [id], onDelete: SetNull)
+
+  serviceType      ServiceType
+  problemType      String
+  description      String
+
+  subCityId        String
+  subCity          SubCity        @relation(fields: [subCityId], references: [id], onDelete: Restrict)
+  woredaId         String?
+  woreda           Woreda?        @relation(fields: [woredaId], references: [id], onDelete: SetNull)
+  areaId           String?
+  area             Area?          @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  specificLocation String
+  address          String?
+  latitude         Float
+  longitude        Float
+
+  startedAt        DateTime       @default(now())
+  photoUrl         String?
+
+  reporterName     String?
+  reporterPhone    String?
+  reporterEmail    String?
+  userId           String?
+  user             User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  status           ReportStatus   @default(PENDING)
+  ipAddress        String?
+  rejectionReason  String?
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status])
+  @@index([serviceType])
+  @@index([subCityId])
+  @@index([outageId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model OutageUpdate {
+  id          String         @id @default(uuid())
+  outageId    String
+  outage      Outage         @relation(fields: [outageId], references: [id], onDelete: Cascade)
+  title       String
+  message     String
+  updateType  String         @default("UPDATE") // UPDATE, CREW_DISPATCHED, INVESTIGATING, REPAIR_IN_PROGRESS, RESTORING, RESTORED
+  authorId    String?
+  author      User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime       @default(now())
+
+  @@index([outageId])
+}
+
+model AffectedConfirmation {
+  id                 String    @id @default(uuid())
+  outageId           String
+  outage             Outage    @relation(fields: [outageId], references: [id], onDelete: Cascade)
+  userId             String?
+  user               User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ipAddress          String?
+  isStillAffected    Boolean   @default(true)
+  comment            String?
+
+  createdAt          DateTime  @default(now())
+
+  @@index([outageId])
+  @@index([userId])
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  message     String
+  type        NotificationType @default(SYSTEM)
+  linkUrl     String?
+  isRead      Boolean          @default(false)
+
+  createdAt   DateTime         @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model Announcement {
+  id              String               @id @default(uuid())
+  title           String
+  content         String
+  serviceType     ServiceType          @default(BOTH)
+  priority        AnnouncementPriority @default(MEDIUM)
+  subCityId       String?
+  subCity         SubCity?             @relation(fields: [subCityId], references: [id], onDelete: SetNull)
+  scheduledStart  DateTime?
+  scheduledEnd    DateTime?
+  isActive        Boolean              @default(true)
+  authorId        String?
+  author          User?                @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([isActive])
+  @@index([serviceType])
+  @@index([subCityId])
+}
