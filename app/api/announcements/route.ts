@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { AnnouncementPriority, ServiceType, NotificationType } from '@prisma/client';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);

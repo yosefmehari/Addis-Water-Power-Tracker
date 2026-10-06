@@ -3,12 +3,18 @@ import prisma from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Outage ID is required' }, { status: 400 });
+    }
     const ip = getClientIp(req);
     const limit = checkRateLimit(`confirm:${ip}:${id}`, 5, 60000);
     if (!limit.success) {

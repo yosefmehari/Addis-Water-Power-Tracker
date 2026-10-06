@@ -5,6 +5,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { ServiceType, ReportStatus, NotificationType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function PUT(
   req: Request,
   { params }: { params: { id: string } }
@@ -12,7 +15,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Notification ID is required' }, { status: 400 });
+    }
 
     const notification = await prisma.notification.findUnique({
       where: { id }

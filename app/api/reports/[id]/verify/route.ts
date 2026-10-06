@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { ReportStatus, OutageStatus, SeverityLevel, NotificationType } from '@prisma/client';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(
   req: Request,
   { params }: { params: { id: string } }
@@ -13,7 +16,10 @@ export async function POST(
       return NextResponse.json({ error: 'Admin or Dispatcher access required' }, { status: 403 });
     }
 
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Report ID is required' }, { status: 400 });
+    }
     const body = await req.json().catch(() => ({}));
     const {
       promoteToOutage = true,

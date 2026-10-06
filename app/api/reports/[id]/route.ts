@@ -3,12 +3,18 @@ import prisma from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { ReportStatus } from '@prisma/client';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(
   req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Report ID is required' }, { status: 400 });
+    }
 
     const report = await prisma.outageReport.findUnique({
       where: { id },
@@ -42,8 +48,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Admin or Dispatcher access required' }, { status: 403 });
     }
 
-    const { id } = params;
-    const body = await req.json();
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Report ID is required' }, { status: 400 });
+    }
+    const body = await req.json().catch(() => ({}));
     const { status, rejectionReason, problemType, description, specificLocation } = body;
 
     const report = await prisma.outageReport.update({
@@ -79,7 +88,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Report ID is required' }, { status: 400 });
+    }
     await prisma.outageReport.delete({ where: { id } });
     return NextResponse.json({ message: 'Report deleted successfully' });
   } catch (error: any) {

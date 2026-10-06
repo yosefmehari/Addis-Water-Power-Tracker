@@ -3,12 +3,18 @@ import prisma from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { OutageStatus, SeverityLevel, NotificationType } from '@prisma/client';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(
   req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Outage ID is required' }, { status: 400 });
+    }
 
     const outage = await prisma.outage.findUnique({
       where: { id },
@@ -79,7 +85,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Admin or Dispatcher access required' }, { status: 403 });
     }
 
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Outage ID is required' }, { status: 400 });
+    }
     const body = await req.json();
     const {
       title,
@@ -197,7 +206,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { id } = params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ error: 'Outage ID is required' }, { status: 400 });
+    }
 
     await prisma.outage.delete({
       where: { id }
