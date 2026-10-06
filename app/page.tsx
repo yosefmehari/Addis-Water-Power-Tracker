@@ -21,11 +21,81 @@ import { startOfDay } from 'date-fns';
 
 export const revalidate = 0; // dynamic on request
 
+async function fetchHomeData() {
+  const query = async () => {
+    return await Promise.all([
+      prisma.outage.count({
+        where: { serviceType: 'WATER', status: { in: ['ACTIVE', 'INVESTIGATING', 'VERIFIED'] } }
+      }),
+      prisma.outage.count({
+        where: { serviceType: 'ELECTRICITY', status: { in: ['ACTIVE', 'INVESTIGATING', 'VERIFIED'] } }
+      }),
+      prisma.outage.count({
+        where: { status: 'RESTORED' }
+      }),
+      prisma.outageReport.count(),
+      prisma.outageReport.count({
+        where: { status: 'PENDING' }
+      }),
+      prisma.announcement.findMany({
+        where: { isActive: true },
+        orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+        take: 2,
+        include: { subCity: true }
+      }),
+      prisma.subCity.findMany({
+        orderBy: { name: 'asc' },
+        include: {
+          _count: {
+            select: {
+              outages: {
+                where: { status: { in: ['ACTIVE', 'INVESTIGATING', 'VERIFIED'] } }
+              }
+            }
+          }
+        }
+      }),
+      prisma.outage.findMany({
+        take: 6,
+        orderBy: [{ status: 'asc' }, { startedAt: 'desc' }],
+        include: {
+          subCity: true,
+          woreda: true,
+          area: true,
+        }
+      }),
+      prisma.outage.findMany({
+        take: 50,
+        orderBy: { startedAt: 'desc' },
+        include: {
+          subCity: true,
+          woreda: true,
+          area: true,
+        }
+      })
+    ]);
+  };
+
+  try {
+    return await query();
+  } catch (error: any) {
+    console.warn('Initial database query in HomePage timed out or failed, retrying after delay...', error?.message);
+    try {
+      // Pause 1.5s to allow Neon cold compute resume
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return await query();
+    } catch (retryError) {
+      console.error('Database connection failed in HomePage after retry:', retryError);
+      return [0, 0, 0, 0, 0, [], [], [], []] as [number, number, number, number, number, any[], any[], any[], any[]];
+    }
+  }
+}
+
 export default async function HomePage() {
   const now = new Date();
   const todayStart = startOfDay(now);
 
-  // Fetch stats and active outages
+  // Fetch stats and active outages with resilient retry & fallback
   const [
     activeWaterCount,
     activePowerCount,
@@ -36,57 +106,7 @@ export default async function HomePage() {
     subCities,
     recentOutages,
     allActiveForMap,
-  ] = await Promise.all([
-    prisma.outage.count({
-      where: { serviceType: 'WATER', status: { in: ['ACTIVE', 'INVESTIGATING', 'VERIFIED'] } }
-    }),
-    prisma.outage.count({
-      where: { serviceType: 'ELECTRICITY', status: { in: ['ACTIVE', 'INVESTIGATING', 'VERIFIED'] } }
-    }),
-    prisma.outage.count({
-      where: { status: 'RESTORED' }
-    }),
-    prisma.outageReport.count(),
-    prisma.outageReport.count({
-      where: { status: 'PENDING' }
-    }),
-    prisma.announcement.findMany({
-      where: { isActive: true },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-      take: 2,
-      include: { subCity: true }
-    }),
-    prisma.subCity.findMany({
-      orderBy: { name: 'asc' },
-      include: {
-        _count: {
-          select: {
-            outages: {
-              where: { status: { in: ['ACTIVE', 'INVESTIGATING', 'VERIFIED'] } }
-            }
-          }
-        }
-      }
-    }),
-    prisma.outage.findMany({
-      take: 6,
-      orderBy: [{ status: 'asc' }, { startedAt: 'desc' }],
-      include: {
-        subCity: true,
-        woreda: true,
-        area: true,
-      }
-    }),
-    prisma.outage.findMany({
-      take: 50,
-      orderBy: { startedAt: 'desc' },
-      include: {
-        subCity: true,
-        woreda: true,
-        area: true,
-      }
-    })
-  ]);
+  ] = await fetchHomeData();
 
   const metrics = {
     activeWaterOutages: activeWaterCount,
@@ -273,7 +293,7 @@ export default async function HomePage() {
           </Link>
         </div>
 
-        <OutageMap outages={allActiveForMap as any} subCities={subCities} height="520px" />
+        <OutageMap outages={allActiveForMap as any} subCities={subCities as any} height="520px" />
       </section>
 
       {/* Recent Outages Feed */}

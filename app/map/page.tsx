@@ -8,19 +8,42 @@ import { formatTimeAgo, getStatusBadge } from '@/lib/utils';
 export const revalidate = 0;
 
 export default async function MapPage() {
-  const [outages, subCities] = await Promise.all([
-    prisma.outage.findMany({
-      orderBy: [{ status: 'asc' }, { startedAt: 'desc' }],
-      include: {
-        subCity: true,
-        woreda: true,
-        area: true,
-      }
-    }),
-    prisma.subCity.findMany({
-      orderBy: { name: 'asc' },
-    })
-  ]);
+  const fetchMapData = async () => {
+    return await Promise.all([
+      prisma.outage.findMany({
+        orderBy: [{ status: 'asc' }, { startedAt: 'desc' }],
+        include: {
+          subCity: true,
+          woreda: true,
+          area: true,
+        }
+      }),
+      prisma.subCity.findMany({
+        orderBy: { name: 'asc' },
+      })
+    ]);
+  };
+
+  let outages: any[] = [];
+  let subCities: any[] = [];
+
+  try {
+    const res = await fetchMapData();
+    outages = res[0];
+    subCities = res[1];
+  } catch (err: any) {
+    console.warn('Initial map data query timed out or failed, retrying after delay...', err?.message);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const res = await fetchMapData();
+      outages = res[0];
+      subCities = res[1];
+    } catch (retryErr) {
+      console.error('Map data query failed after retry:', retryErr);
+      outages = [];
+      subCities = [];
+    }
+  }
 
   const activeOutages = outages.filter(o => ['ACTIVE', 'INVESTIGATING', 'VERIFIED'].includes(o.status));
 

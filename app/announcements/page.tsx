@@ -7,17 +7,39 @@ import Link from 'next/link';
 export const revalidate = 0;
 
 export default async function AnnouncementsPage() {
-  const announcements = await prisma.announcement.findMany({
-    where: { isActive: true },
-    orderBy: [
-      { priority: 'desc' },
-      { createdAt: 'desc' }
-    ],
-    include: {
-      subCity: true,
-      author: { select: { name: true } }
+  let announcements: any[] = [];
+  try {
+    announcements = await prisma.announcement.findMany({
+      where: { isActive: true },
+      orderBy: [
+        { priority: 'desc' },
+        { createdAt: 'desc' }
+      ],
+      include: {
+        subCity: true,
+        author: { select: { name: true } }
+      }
+    });
+  } catch (err: any) {
+    console.warn('Initial announcements query timed out or failed, retrying after delay...', err?.message);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      announcements = await prisma.announcement.findMany({
+        where: { isActive: true },
+        orderBy: [
+          { priority: 'desc' },
+          { createdAt: 'desc' }
+        ],
+        include: {
+          subCity: true,
+          author: { select: { name: true } }
+        }
+      });
+    } catch (retryErr) {
+      console.error('Announcements query failed after retry:', retryErr);
+      announcements = [];
     }
-  });
+  }
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
